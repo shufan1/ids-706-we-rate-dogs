@@ -1,7 +1,7 @@
 import os
 from nltk.sentiment import SentimentIntensityAnalyzer
 import pandas as pd
-#from wordcloud import WordCloud, STOPWORDS, ImageColorGenerator
+from wordcloud import WordCloud, STOPWORDS, ImageColorGenerator
 import matplotlib.pyplot as plt
 import re
 import nltk
@@ -16,6 +16,9 @@ from plotly.subplots import make_subplots
 sia = SentimentIntensityAnalyzer()
 
 def clean_data(twitter_archive):
+    # filter only dog breeds that are dogs
+    # twitter_archive = twitter_archive[(twitter_archive["p1_dog"]==True) \
+    #                       & (twitter_archive["p2_dog"]==True) & (twitter_archive["p3_dog"]==True)] 
     # create conditions to seperate them into buckets 
     conditions = [
         (twitter_archive ['rating_numerator'] <= 4),
@@ -57,10 +60,40 @@ def plot_popularname(twitter_archive):
     return fig
     
 
+def plot_sentiment(twitter_archive):
+    twitter_archive = clean_data(twitter_archive)
+    rating_levels = ['cuteness_overflow', 'okay', 'cute', 'not_so_cute']
+    bucket_data = dict.fromkeys(rating_levels, list())
+    
+    # get the sentiment analysis 
+    for i in range(twitter_archive.shape[0]):
+        if twitter_archive['rating_bucket'][i] == 'not_so_cute':
+            bucket_data['not_so_cute'] = bucket_data['not_so_cute']+[sia.polarity_scores(twitter_archive['text'][i])]
+        elif twitter_archive['rating_bucket'][i] == 'okay':
+            bucket_data['okay']= bucket_data['okay']+[sia.polarity_scores(twitter_archive['text'][i])]
+        elif twitter_archive['rating_bucket'][i] == 'cute':
+            bucket_data['cute']=bucket_data['cute']+[sia.polarity_scores(twitter_archive['text'][i])]
+        else:
+            bucket_data['cuteness_overflow']=bucket_data['cuteness_overflow']+[sia.polarity_scores(twitter_archive['text'][i])]
 
+    fig = make_subplots(rows=1, cols=4,subplot_titles=rating_levels)
+    this_figure = make_subplots(rows=2, cols=2,subplot_titles=rating_levels)
+    for i in range(len(rating_levels)):
+        df = pd.DataFrame(bucket_data[rating_levels[i]])
+        figure1 = px.histogram(df, x=['neu','pos','neg'])
+        figure1_traces = []
+        for trace in range(len(figure1["data"])):
+            figure1_traces.append(figure1["data"][trace])
+        for traces in figure1_traces:
+            this_figure.add_trace(traces, row=i//2 +1 , col=i%2 +1)
+
+    this_figure.update_layout(showlegend=False,title_text="Sentiment Labels by rating")
+
+    return this_figure
     
     
-def word_processing(tag) : 
+def word_processing(tag, twitter_archive) : 
+    twitter_archive = clean_data(twitter_archive)
     b = twitter_archive.loc[twitter_archive['rating_bucket'] ==tag, 'text'].tolist()
     b1 = ' '.join(b)
     b1 = re.sub(r"https://\S+","",b1)
@@ -70,10 +103,31 @@ def word_processing(tag) :
     wordcloud2 = WordCloud().generate(b1)
     return wordcloud2 
 
-def word_cloud(rate):
-    plt.imshow(word_processing(rate), interpolation='bilinear')
-    plt.axis("off")
-    plt.show()
+
+
+
+def wordcloud_generator(twitter_archive):
+    rating_levels = ['cuteness_overflow', 'okay', 'cute', 'not_so_cute']
+    this_figure = make_subplots(rows=2, cols=2, subplot_titles=rating_levels)
+    for i in range(len(rating_levels)):
+        this_figure.add_trace(go.Image(z=word_processing(rating_levels[i], twitter_archive)), row=i//2 +1 , col=i%2 +1)
+    this_figure.update_layout(title_text="Most frequent words in description by rating")
+    return this_figure
+    
+    
+def popular_names(twitter_archive):
+    twitter_archive = clean_data(twitter_archive)
+    # select names that are not none
+    twitter = twitter_archive[twitter_archive.name != "None"]
+    wordcloud = WordCloud (
+                    background_color = 'white',
+                    width = 512,
+                    height = 384
+                        ).generate(' '.join(twitter['name']))
+    # Make a plot
+    fig = go.Figure(go.Image(z=wordcloud))
+    return fig
+
 
     
     
@@ -86,7 +140,9 @@ if __name__=="__main__":
     AWS_SESSION_TOKEN = os.getenv("AWS_SESSION_TOKEN")
     file = "s3://we-rate-dogs-data/processed-data/master.csv"
     twitter_archive = pd.read_csv(file)
+    twitter_archive = clean_data(twitter_archive)
 
-    fig = plot_popularname(twitter_archive)
+    fig = plot_sentiment(twitter_archive)
     fig.show()
+    #print(twitter_archive['rating_bucket'].value_counts())
     
