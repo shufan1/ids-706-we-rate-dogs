@@ -1,0 +1,9 @@
+version: 1.0
+runtime: python37
+build:
+  commands:
+    build:
+    pip install -r requirements.txt
+run: 
+  command: python app.py
+  
